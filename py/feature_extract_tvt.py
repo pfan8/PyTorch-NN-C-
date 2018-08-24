@@ -20,28 +20,27 @@ def get_max_features(cursor):
 ############################    TERRAN    #############################
 TERRAN_UNIT_ID_LIST = [0, 1, 2, 3, 5, 6, 7, 8, 9, 11, 12, 30, 31, 32, 34, 58]
 TERRAN_BUILDING_ID_LIST = [106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 120, 122, 123, 124, 125]
-TERRAN_DEFENSIVE_BUILDINGS = []
+TERRAN_DEFENSIVE_BUILDINGS = [107, 124, 125]
 TERRAN_RESEARCH_BUILDINGS = [108, 112, 122, 120, 123, 115, 116, 117, 118]
 ##############################    ZERG    #############################
 ZERG_UNIT_ID_LIST = [35, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 50, 59, 62, 103]
 ZERG_BUILDING_ID_LIST = [130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 146, 149]
-ZERG_DEFENSIVE_BUILDINGS = []
+ZERG_DEFENSIVE_BUILDINGS = [144, 146]
 ZERG_RESEARCH_BUILDINGS = [139, 142, 135, 132, 141, 138, 137, 133, 136, 140]
 ############################    PROTOSS    #############################
 PROTOSS_UNIT_ID_LIST = [60, 61, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 83, 84]
 PROTOSS_BUILDING_ID_LIST = [154, 155, 156, 157, 159, 160, 162, 163, 164, 165, 166, 167, 169, 170, 171, 172]
-PROTOSS_DEFENSIVE_BUILDINGS = []
-PROTOSS_RESEARCH_BUILDINGS = []
+PROTOSS_DEFENSIVE_BUILDINGS = [162]
+PROTOSS_RESEARCH_BUILDINGS = [159, 163, 164, 165, 166, 169, 170, 171]
 
 ########################### DATA #################################
 BUILDING_RDO = []
-BUILDTILE = []
 UNIT_SCORE = []
 
 
 MAX_FRAME_THREASHOLD = 60000
 
-def get_features(race, player_replay_ID, replayID, bottom_frame, upper_frame, stats):
+def get_features(race, player_replay_ID, replayID, bottom_frame, upper_frame, stats, oppo_stats):
 
     U_mineral = 0
     U_gas = 0
@@ -127,11 +126,13 @@ def get_features(race, player_replay_ID, replayID, bottom_frame, upper_frame, st
                 stats['current_units'].append(add_unit)
             elif add_unit[2] in (TERRAN_BUILDING_ID_LIST + ZERG_BUILDING_ID_LIST + PROTOSS_BUILDING_ID_LIST):
                 stats['current_buildings'].append(add_unit)
+                ##  unique_region
+                for item in BUILDING_RDO:
+                    if item[0] == add_unit[2]:
+                        unique_region += item[3]
             else:
                 continue
                 # print("Not Normal Unit/Building !")
-        ##  unique_region
-        unique_region = len(unit_create_list)
     
 
     ## base_num
@@ -205,8 +206,7 @@ def get_features(race, player_replay_ID, replayID, bottom_frame, upper_frame, st
                     "AND Frame between %s and %s")
     cursor.execute(query, (player_replay_ID, bottom_frame, upper_frame))
     stats['vm_action_num'] += cursor.fetchone()[0]
-        
-    ## region_value
+    
 
     feature = [U_mineral, U_gas, U_supply, I_mineral, I_gas, I_supply, base_num, building_score, building_variety, defensive_ratio, research_ratio, unit_num, unit_variety, stats['vm_action_num']
                             , unique_region]
@@ -290,8 +290,11 @@ for pr_item in pr_cursor:
         # print("current frame: %d" % (current_frame_index * 240))
         # print("bottom frame: %d" % (bottom_frame))
         # print("upper frame: %d" % (upper_frame))
-        self_current_feature = get_features(Race.Terran, player_replay_ID, replayID, bottom_frame, upper_frame, self_stats)
-        opponent_current_feature = get_features(Race.Terran, player_replay_ID + 1, replayID, bottom_frame, upper_frame, oppo_stats)
+        self_current_feature = get_features(Race.Terran, player_replay_ID, replayID, bottom_frame, upper_frame, self_stats, oppo_stats)
+        opponent_current_feature = get_features(Race.Terran, player_replay_ID + 1, replayID, bottom_frame, upper_frame, oppo_stats, self_stats)
+        # append region values
+        self_current_feature.append(self_current_feature[7] - opponent_current_feature[7])
+        opponent_current_feature.append(opponent_current_feature[7] - self_current_feature[7])
         ##  concat these features
         features.append(self_current_feature + opponent_current_feature)
         # print("features: " + str(features))
