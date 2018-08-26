@@ -1,0 +1,42 @@
+=============================   sc_tvt   ===========================
+mysql> select count(*) from replay;
++----------+
+| count(*) |
++----------+
+|      395 |
++----------+
+
+mysql> select count(*) from playerreplay where RaceID != 5 and Winner=1;
++----------+
+| count(*) |
++----------+
+|      328 |
++----------+
+=============================   sc_tvz   ===========================
+mysql> select count(*) from replay;
++----------+
+| count(*) |
++----------+
+|      812 |
++----------+
+
+mysql> select count(*) from playerreplay where RaceID != 5 and Winner=1;
++----------+
+| count(*) |
++----------+
+|      649 |
++----------+
+=============================   sc_tvp   ===========================
+mysql> select count(*) from replay;
++----------+
+| count(*) |
++----------+
+|     2017 |
++----------+
+
+mysql> select count(*) from playerreplay where RaceID != 5 and Winner=1;
++----------+
+| count(*) |
++----------+
+|     1591 |
++----------+

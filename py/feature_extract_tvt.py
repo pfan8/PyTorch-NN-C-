@@ -3,6 +3,7 @@ import copy
 import numpy as np
 import time
 from enum import Enum
+import io
 
 class Race(Enum):
     Zerg = 0
@@ -14,7 +15,13 @@ def get_max_features(cursor):
     max_features = []
     return max_features
 
-
+def count_binary_ones(num):
+    cnt = 0
+    while num:
+        if num & 1 == 1:
+            cnt += 1
+        num = num >> 1
+    return cnt
 
 
 ############################    TERRAN    #############################
@@ -37,9 +44,20 @@ PROTOSS_RESEARCH_BUILDINGS = [159, 163, 164, 165, 166, 169, 170, 171]
 BUILDING_RDO = []
 UNIT_SCORE = []
 
-
+MIN_FRAME_THREASHOLD = 14400
 MAX_FRAME_THREASHOLD = 60000
+MAX_DISTANCE = 2147483647
 
+# config
+DB_NAME = "starcraft_tvt"
+HOST = "localhost"
+PORT = 3306
+USER = "root"
+PASSWD = "paofan8"
+LIMIT_START_INDEX = 2
+LIMIT_NUM = 2
+OUTPUT_FILE_NAME = "feature_tvt"
+ROW_FILE_NAME = OUTPUT_FILE_NAME + "_row"
 def get_features(race, player_replay_ID, replayID, bottom_frame, upper_frame, stats, oppo_stats):
 
     U_mineral = 0
@@ -151,6 +169,14 @@ def get_features(race, player_replay_ID, replayID, bottom_frame, upper_frame, st
         for item in UNIT_SCORE:
             if unit[2] == item[0]:
                 building_score += 2*item[1] + 4*item[2]
+    
+    ## unit_score
+    unit_score = 0.0
+    for unit in stats['current_units']:
+        for item in UNIT_SCORE:
+            if unit[2] == item[0]:
+                unit_score += 2*item[1] + 4*item[2]
+    
 
     ## building_variety
     building_variety = 0.0
@@ -172,24 +198,6 @@ def get_features(race, player_replay_ID, replayID, bottom_frame, upper_frame, st
     #         resource_region_num += 1
     # current_feature.append(resource_region_num)
 
-    building_total_num = len(stats['current_buildings'])
-    ## defensive_ratio
-    defensive_ratio = 0.0
-    for building in stats['current_buildings']:
-        for item in DEFENSIVE_BUILDINGS:
-            if building[2] == item[0]:
-                defensive_ratio += 1
-    if building_total_num != 0:
-        defensive_ratio /= building_total_num
-    ## research_ratio 
-    research_ratio = 0.0
-    for building in stats['current_buildings']:
-        for item in RESEARCH_BUILDINGS:
-            if building[2] == item[0]:
-                defensive_ratio += 1
-    if building_total_num != 0:
-        research_ratio /= building_total_num
-
     ## unit_num 
     unit_num = len(stats['current_units'])
 
@@ -206,23 +214,40 @@ def get_features(race, player_replay_ID, replayID, bottom_frame, upper_frame, st
                     "AND Frame between %s and %s")
     cursor.execute(query, (player_replay_ID, bottom_frame, upper_frame))
     stats['vm_action_num'] += cursor.fetchone()[0]
-    
 
-    feature = [U_mineral, U_gas, U_supply, I_mineral, I_gas, I_supply, base_num, building_score, building_variety, defensive_ratio, research_ratio, unit_num, unit_variety, stats['vm_action_num']
-                            , unique_region]
+    ## building_slots
+    building_slots = [0] * len(TERRAN_BUILDING_ID_LIST)
+    building_total_num = len(stats['current_buildings'])
+    if building_total_num != 0:
+        for building in stats['current_buildings']:
+            for i in range(len(TERRAN_BUILDING_ID_LIST)):
+                if building[2] == TERRAN_BUILDING_ID_LIST[i]:
+                    building_slots[i] += 1
+
+    ## unit_slots
+    unit_slots = [0] * len(TERRAN_UNIT_ID_LIST)
+    unit_total_num = len(stats['current_units'])
+    if unit_total_num != 0:
+        for unit in stats['current_units']:
+            for i in range(len(TERRAN_UNIT_ID_LIST)):
+                if unit[2] == TERRAN_UNIT_ID_LIST[i]:
+                    unit_slots[i] += 1
+
+    feature = [bottom_frame/MAX_FRAME_THREASHOLD, U_mineral, U_gas, U_supply, I_mineral, I_gas, I_supply, base_num, building_score, building_variety, unit_num, unit_score, unit_variety, stats['vm_action_num']
+                            , unique_region] + building_slots + unit_slots
     return feature
     
 
 print (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
 start_time = time.time()
 
-cnx = mysql.connector.Connect (host = "localhost",
-                              port = 3306,
-                              user = "root",
-                              passwd = "paofan8",
-                              db = "starcraft_tvt",
+cnx = mysql.connector.Connect (host = HOST,
+                              port = PORT,
+                              user = USER,
+                              passwd = PASSWD,
+                              db = DB_NAME,
                               buffered=True)
-pr_cursor = cnx.cursor()
+r_cursor = cnx.cursor()
 cursor = cnx.cursor()
 
 features = []
@@ -233,32 +258,50 @@ BUILDING_RDO = cursor.fetchall()
 cursor.execute ("SELECT * FROM unitscore")
 UNIT_SCORE = cursor.fetchall()
 
-pr_cursor.execute ("SELECT * FROM playerreplay WHERE RaceID != 5"
-                  " limit 3")
+r_cursor.execute ("SELECT ReplayID FROM replay WHERE ReplayID LIMIT " + str(LIMIT_START_INDEX) + "," + str(LIMIT_NUM))
 
 DEFENSIVE_BUILDINGS = [x for x in BUILDING_RDO if x[1] == 0]
 RESEARCH_BUILDINGS = [x for x in BUILDING_RDO if x[1] == 1]
 
+fo_count = 0
 # PlayerReplayID,StartPosBTID,Winner,ReplayID
-player_replay_ID = 0
-raceID = 0
-replayID = 0
-start_pos = 0
-for pr_item in pr_cursor:
-    if raceID == Race.none.value:
-        break
-    if replayID == pr_item[4]:
-        continue
-    player_replay_ID = pr_item[0]
-    raceID = pr_item[3]
-    replayID = pr_item[4]
-    start_pos = pr_item[5]
-    print("Processing playreplay %d" % player_replay_ID)
+for r_item in r_cursor:
+    # get opponent rp_id
+    self_rp_id = -1
+    oppo_rp_id = -1
+    replayID = r_item[0]
+    query = "SELECT * FROM playerreplay WHERE ReplayID = " + str(replayID)
+    cursor.execute (query)
+    for pr_item in cursor:
+        player_replay_ID = pr_item[0]
+        raceID = pr_item[3]
+        if raceID == Race.none.value:
+            # print("Invalid Race (PR_ID %d)" % pr_item[0])
+            continue
+        if self_rp_id == -1:
+            self_rp_id = player_replay_ID
+        elif oppo_rp_id == -1:
+            oppo_rp_id = player_replay_ID
+        else:
+            print("rpid %d error" % player_replay_ID)
+    # filter no Winner flag
+
+
     query_max_Frame = ("select Duration from replay where ReplayID=%s")
     cursor.execute(query_max_Frame, (replayID,))
     max_frame = cursor.fetchone()[0]
-    print(max_frame)
+    print("max_frame: %d" % max_frame)
+    if max_frame < MIN_FRAME_THREASHOLD:
+        print("Filter it for not reaching min frame threashold")
+        continue
     
+    print("Processing playreplay %d,%d" % (self_rp_id,oppo_rp_id))
+    fo_count += 1
+    # output feature to file
+    with open(ROW_FILE_NAME,"a") as fo:
+        fo.write("row %d playreplay %d,%d" % (fo_count, self_rp_id,oppo_rp_id))
+        fo.write("\n")
+   
     current_frame_index = 0
     self_current_resources = [0, 0, 0, 0, 0, 0] # resource related,can adapt a different frame interval
     self_vm_action_num = 0
@@ -279,6 +322,60 @@ for pr_item in pr_cursor:
                     'current_units' : oppo_current_units,
                     'current_buildings' : oppo_current_buildings}
     
+    ## map_features
+    query = ("SELECT MapID, NumStartPos FROM map WHERE MapID in (select MapID from replay where ReplayID = %s)")
+    cursor.execute(query, (replayID,))
+    mapID, start_pos_num = cursor.fetchone()
+    total_tile_num = 0
+    gournd_height_0_num = 0
+    gournd_height_1_num = 0
+    gournd_height_2_num = 0
+    gournd_height_3_num = 0
+    gournd_height_4_num = 0
+    gournd_height_5_num = 0
+    buildable_num = 0
+    walkable_num = 0
+    chokedist_num = 0
+
+    query = ("SELECT GroundHeightID, Buildable, Walkable, ChokeDist FROM buildtile WHERE MapID in (select MapID from replay where ReplayID = %s)")
+    cursor.execute(query, (replayID,))
+    tiles = cursor.fetchall()
+    total_tile_num = len(tiles)
+    for GroundHeightID, Buildable, Walkable, ChokeDist in tiles:
+        # gournd_height_num
+        if GroundHeightID == 0:
+            gournd_height_0_num += 1
+        elif GroundHeightID == 1:
+            gournd_height_1_num += 1
+        elif GroundHeightID == 2:
+            gournd_height_2_num += 1
+        elif GroundHeightID == 3:
+            gournd_height_3_num += 1
+        elif GroundHeightID == 4:
+            gournd_height_4_num += 1
+        else:
+            gournd_height_5_num += 1
+        # buildable_num
+        if Buildable:
+            buildable_num += 1
+        # walkable_num
+        walkable_num += count_binary_ones(Walkable)
+        # chokedist_num
+        if ChokeDist != MAX_DISTANCE:
+            chokedist_num += ChokeDist
+
+    gournd_height_0_num /= total_tile_num
+    gournd_height_1_num /= total_tile_num
+    gournd_height_2_num /= total_tile_num
+    gournd_height_3_num /= total_tile_num
+    gournd_height_4_num /= total_tile_num
+    gournd_height_5_num /= total_tile_num
+    buildable_num /= total_tile_num
+    walkable_num /= total_tile_num
+    chokedist_num /= total_tile_num
+    map_features = [gournd_height_0_num, gournd_height_1_num, gournd_height_2_num, gournd_height_3_num, gournd_height_4_num, gournd_height_5_num,
+                    buildable_num, walkable_num, chokedist_num]
+    
     while current_frame_index * 240 < max_frame:
         bottom_frame = current_frame_index * 240
         current_frame_index += 1
@@ -290,21 +387,26 @@ for pr_item in pr_cursor:
         # print("current frame: %d" % (current_frame_index * 240))
         # print("bottom frame: %d" % (bottom_frame))
         # print("upper frame: %d" % (upper_frame))
-        self_current_feature = get_features(Race.Terran, player_replay_ID, replayID, bottom_frame, upper_frame, self_stats, oppo_stats)
-        opponent_current_feature = get_features(Race.Terran, player_replay_ID + 1, replayID, bottom_frame, upper_frame, oppo_stats, self_stats)
+        self_current_feature = get_features(Race.Terran, self_rp_id, replayID, bottom_frame, upper_frame, self_stats, oppo_stats)
+        opponent_current_feature = get_features(Race.Terran, oppo_rp_id, replayID, bottom_frame, upper_frame, oppo_stats, self_stats)
         # append region values
         self_current_feature.append(self_current_feature[7] - opponent_current_feature[7])
         opponent_current_feature.append(opponent_current_feature[7] - self_current_feature[7])
         ##  concat these features
-        features.append(self_current_feature + opponent_current_feature)
+        features.append(self_current_feature + opponent_current_feature + map_features)
         # print("features: " + str(features))
+
+    # output feature to file
+    with open(OUTPUT_FILE_NAME,"a") as fo:
+        fo.write(str(features))
+        fo.write("\n")
+        features.clear()
 
 
 
 end_time = time.time()
 print (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-print("processing time is %s" % str(end_time - start_time))
-print(features)
-pr_cursor.close()
+print("procesasing time is %s" % str(end_time - start_time))
+r_cursor.close()
 cursor.close()
 cnx.close()
