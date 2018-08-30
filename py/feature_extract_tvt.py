@@ -54,10 +54,12 @@ HOST = "localhost"
 PORT = 3306
 USER = "root"
 PASSWD = "paofan8"
-LIMIT_START_INDEX = 2
-LIMIT_NUM = 2
-OUTPUT_FILE_NAME = "feature_tvt"
-ROW_FILE_NAME = OUTPUT_FILE_NAME + "_row"
+LIMIT_START_INDEX = 5
+LIMIT_NUM = 5
+FEATURE_FILE_NAME = "feature_tvt"
+LABEL_FILE_NAME = FEATURE_FILE_NAME + "_label"
+ROW_FILE_NAME = FEATURE_FILE_NAME + "_row"
+
 def get_features(race, player_replay_ID, replayID, bottom_frame, upper_frame, stats, oppo_stats):
 
     U_mineral = 0
@@ -251,6 +253,7 @@ r_cursor = cnx.cursor()
 cursor = cnx.cursor()
 
 features = []
+labels = []
 max_features = get_max_features(cursor)
 
 cursor.execute ("SELECT * FROM buildingrdo")
@@ -258,7 +261,7 @@ BUILDING_RDO = cursor.fetchall()
 cursor.execute ("SELECT * FROM unitscore")
 UNIT_SCORE = cursor.fetchall()
 
-r_cursor.execute ("SELECT ReplayID FROM replay WHERE ReplayID LIMIT " + str(LIMIT_START_INDEX) + "," + str(LIMIT_NUM))
+r_cursor.execute ("SELECT ReplayID FROM replay ORDER BY ReplayID LIMIT " + str(LIMIT_START_INDEX) + "," + str(LIMIT_NUM))
 
 DEFENSIVE_BUILDINGS = [x for x in BUILDING_RDO if x[1] == 0]
 RESEARCH_BUILDINGS = [x for x in BUILDING_RDO if x[1] == 1]
@@ -272,6 +275,8 @@ for r_item in r_cursor:
     replayID = r_item[0]
     query = "SELECT * FROM playerreplay WHERE ReplayID = " + str(replayID)
     cursor.execute (query)
+    # print("before filter ReplayID: %d" % replayID)
+    winner_label = -1
     for pr_item in cursor:
         player_replay_ID = pr_item[0]
         raceID = pr_item[3]
@@ -280,22 +285,25 @@ for r_item in r_cursor:
             continue
         if self_rp_id == -1:
             self_rp_id = player_replay_ID
+            if pr_item[2] == 1:
+                winner_label = 1
         elif oppo_rp_id == -1:
             oppo_rp_id = player_replay_ID
+            if pr_item[2] == 1:
+                winner_label = 0
         else:
             print("rpid %d error" % player_replay_ID)
     # filter no Winner flag
-
-
+    if winner_label == -1:
+        continue
     query_max_Frame = ("select Duration from replay where ReplayID=%s")
     cursor.execute(query_max_Frame, (replayID,))
     max_frame = cursor.fetchone()[0]
-    print("max_frame: %d" % max_frame)
+    # print("max_frame: %d" % max_frame)
     if max_frame < MIN_FRAME_THREASHOLD:
         print("Filter it for not reaching min frame threashold")
         continue
-    
-    print("Processing playreplay %d,%d" % (self_rp_id,oppo_rp_id))
+    # print("Processing playreplay %d,%d" % (self_rp_id,oppo_rp_id))
     fo_count += 1
     # output feature to file
     with open(ROW_FILE_NAME,"a") as fo:
@@ -394,13 +402,20 @@ for r_item in r_cursor:
         opponent_current_feature.append(opponent_current_feature[7] - self_current_feature[7])
         ##  concat these features
         features.append(self_current_feature + opponent_current_feature + map_features)
+        # append winner label
+        labels.append(winner_label)
         # print("features: " + str(features))
 
     # output feature to file
-    with open(OUTPUT_FILE_NAME,"a") as fo:
+    with open(FEATURE_FILE_NAME,"a") as fo:
         fo.write(str(features))
         fo.write("\n")
         features.clear()
+    # output label to file
+    with open(LABEL_FILE_NAME,"a") as lo:
+        lo.write(str(labels))
+        lo.write("\n")
+        labels.clear()
 
 
 
