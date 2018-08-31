@@ -20,7 +20,7 @@ import random
 
 
 BATCH_SIZE = 32
-EPOCH = 1000
+EPOCH = 100
 FILE_NUM = 4
 OUT_FILE_DIR = "model/"
 
@@ -35,8 +35,8 @@ def get_loss_plot_data(losses_his):
                 his_result[0].append(np.mean(temp))
                 temp.clear()
             temp.append(item)
-        print("his_length: %d" % len(his))
-        print("EPOCH_LENGTH: %d" % EPOCH_LENGTH)
+        # print("his_length: %d" % len(his))
+        # print("EPOCH_LENGTH: %d" % EPOCH_LENGTH)
         result += his_result
     # print("result: %s" % str(result))
     return result
@@ -54,9 +54,47 @@ def get_print_tensor(tensor):
         return t_str
 
 def normalize_min_max(data, index, max_threashold, min_threashold = 0):
-    data[index] = (data[index] - min_threashold) / (max_threashold - min_threashold) if (data[index] < max_threashold) else 1
+    data[index] = (data[index] - min_threashold) / (max_threashold - min_threashold)
+
+def get_accuracy(predict, label):
+    hit_num = 0
+    if(len(predict) != len(label)):
+        print("size of predict and label didn't match")
+        raise ValueError
+    else:
+        for p,l in zip(predict, label):
+            temp = 1 if p > 0.5 else 0
+            if temp == l:
+                hit_num += 1
+        return hit_num / len(predict)
+
+def save_model_for_cpp(nets, i):
+    model = {
+        "name" : "net" + str(i + 1),
+        "net" : nets[i]
+    }
+    save_model(model)
+
+
+def save_model(model):
+    name = model['name']
+    net = model['net']
+    model_dict = net.state_dict()
+    with open(OUT_FILE_DIR + name + ".model","w") as fo:
+        for i in model_dict:
+            if type(model_dict[i]) is torch.Tensor:
+                structure = "dict[%s]=" % i
+                fo.write(structure + "\n")
+                fo.write(str(model_dict[i].size()) + "\n")
+                fo.write(get_print_tensor(model_dict[i]))
+                fo.write("\n")
+
+    torch.save(net, OUT_FILE_DIR + name +'.pt')
  
 if __name__ == '__main__':
+    if not os.path.exists(OUT_FILE_DIR):
+        os.mkdir(OUT_FILE_DIR)
+
     torch.cuda.device_count()
     cuda0 = torch.cuda.set_device(0)
     torch.cuda.current_device()  # output: 0
@@ -78,16 +116,22 @@ if __name__ == '__main__':
                 for i in range(len(input_temp)):
                     # U_mineral normalization
                     normalize_min_max(input_temp[i], 1, 4000)
+                    normalize_min_max(input_temp[i], 51, 4000)
                     # U_gas normalization
                     normalize_min_max(input_temp[i], 2, 1750)
+                    normalize_min_max(input_temp[i], 52, 1750)
                     # U_supply normalization
                     normalize_min_max(input_temp[i], 3, 350)
+                    normalize_min_max(input_temp[i], 53, 350)
                     # I_mineral normalization
                     normalize_min_max(input_temp[i], 4, 75000)
+                    normalize_min_max(input_temp[i], 54, 75000)
                     # I_gas normalization
                     normalize_min_max(input_temp[i], 5, 38000)
+                    normalize_min_max(input_temp[i], 55, 38000)
                     # I_supply normalization
                     normalize_min_max(input_temp[i], 6, 400)
+                    normalize_min_max(input_temp[i], 56, 400)
                     # base_num normalization
                     normalize_min_max(input_temp[i], 7, 10)
                     normalize_min_max(input_temp[i], 57, 10)
@@ -131,8 +175,10 @@ if __name__ == '__main__':
                     # region_value normalization
                     normalize_min_max(input_temp[i], 49, 20)
                     normalize_min_max(input_temp[i], 99, 20)
+                    # chokedist normalization
+                    normalize_min_max(input_temp[i], 108, 600, 200)
 
-                # delete features can not get in real system
+                # delete features can not get from real system
                 for i in range(len(input_temp)):
                     del input_temp[i][108] # chokedist
                     del input_temp[i][107] # walkable_num (16 binary values)
@@ -177,6 +223,7 @@ if __name__ == '__main__':
     print("winner_count: %d" % winner_count)
     print("lose_count: %d" % lose_count)
     # use permutation to split train|dev|test dataset after shuffle whole data
+    np.random.seed(1)
     dataset_index = np.random.permutation(np.arange(len(labels)))
     train_split_index = int(len(inputs) * 0.8)
     dev_split_index = int(len(inputs) * 0.9)
@@ -193,7 +240,7 @@ if __name__ == '__main__':
     torch.nn.init.xavier_uniform_(linear2.weight)
     torch.nn.init.xavier_uniform_(linear3.weight)
 
-    net = torch.nn.Sequential(
+    net1 = torch.nn.Sequential(
         linear1,
         torch.nn.Tanh(),
         linear2,
@@ -202,23 +249,29 @@ if __name__ == '__main__':
         torch.nn.Sigmoid()
     )
 
-    net2, net3 = copy.deepcopy(net), copy.deepcopy(net)
+    net2, net3 = copy.deepcopy(net1), copy.deepcopy(net1)
 
-    print(net)  # net 的结构
+    # net = torch.load(OUT_FILE_DIR + "net0.pt")
+    # net2 = torch.load(OUT_FILE_DIR + "net1.pt")
+    # net3 = torch.load(OUT_FILE_DIR + "net2.pt")
+
+    print(net1)  # net 的结构
 
     # Adam optimizer
-    optimizer_1 = torch.optim.Adam(net.parameters(), lr=1e-4)  # 传入 net 的所有参数, 学习率
-    optimizer_2 = torch.optim.Adam(net2.parameters(), lr=1e-5)  # 传入 net 的所有参数, 学习率
-    optimizer_3 = torch.optim.Adam(net3.parameters(), lr=1e-6)  # 传入 net 的所有参数, 学习率
+    optimizer_1 = torch.optim.Adam(net1.parameters(), lr=1e-3)  # 传入 net 的所有参数, 学习率
+    optimizer_2 = torch.optim.Adam(net2.parameters(), lr=1e-4)  # 传入 net 的所有参数, 学习率
+    optimizer_3 = torch.optim.Adam(net3.parameters(), lr=1e-5)  # 传入 net 的所有参数, 学习率
     optimizers = [optimizer_1, optimizer_2, optimizer_3]
     loss_func = torch.nn.CrossEntropyLoss()      # 预测值和真实值的误差计算公式 (交叉熵)
     train_losses_his = [[], [], []]   # 记录 training 时不同学习率的 loss
     dev_losses_his = [[], [], []]   # 记录 training 时不同学习率的 loss
-    nets = [net, net2, net3]
+    test_losses_his = [[], [], []]   # 记录 training 时不同学习率的 loss
+    highest_accuracies = [0, 0, 0]   # 记录最高的准确率
+    nets = [net1, net2, net3]
 
     # cuda
     if torch.cuda.is_available():
-        net.cuda()
+        net1.cuda()
         net2.cuda()
         net3.cuda()
         loss_func.cuda()
@@ -228,10 +281,10 @@ if __name__ == '__main__':
     since = time.time()
     for epoch in range(EPOCH):
         print('Epoch: ', epoch)
-
         # train dataset
         bxtemp = [inputs[train_dataset_index[0]]]
         bytemp = [labels[train_dataset_index[0]]]
+        ac_temp = 0
         for i in range(1, len(train_dataset_index)):
             if i % BATCH_SIZE != 0:
                 bxtemp.append(inputs[train_dataset_index[i]])
@@ -239,14 +292,11 @@ if __name__ == '__main__':
                 continue
             b_x, b_y = torch.tensor(bxtemp), torch.tensor(bytemp)
             b_x, b_y = b_x.type(torch.FloatTensor), b_y.type(torch.LongTensor)
-            b_y = b_y.view(-1, 1)
             b_x, b_y = Variable(b_x.cuda()), Variable(b_y.cuda())
             for net, opt, l_his in zip(nets, optimizers, train_losses_his):
                 output = net(b_x)              # get output for every net
-                temp = torch.ones(len(output), 1) - output # used for cross entropy loss_func
+                temp = Variable(torch.ones(len(output), 1).cuda()) - output # used for cross entropy loss_func
                 output = torch.cat((output,temp), -1)
-                # print("output: %s" % str(output))
-                # print("b_y: %s" % str(b_y))
                 loss = loss_func(output, b_y)  # compute loss for every net
                 opt.zero_grad()                # clear gradients for next train
                 loss.backward()                # backpropagation, compute gradients
@@ -255,54 +305,73 @@ if __name__ == '__main__':
             bxtemp.clear()
             bytemp.clear()
 
+
         # dev dataset
         bxtemp = [inputs[dev_dataset_index[0]]]
         bytemp = [labels[dev_dataset_index[0]]]
+        accuracies = [[], [], []]
         for i in range(1, len(dev_dataset_index)):
             if i % BATCH_SIZE != 0:
                 bxtemp.append(inputs[dev_dataset_index[i]])
                 bytemp.append(labels[dev_dataset_index[i]])
                 continue
             b_x, b_y = torch.tensor(bxtemp), torch.tensor(bytemp)
-            b_x, b_y = b_x.type(torch.FloatTensor), b_y.type(torch.FloatTensor)
-            b_y = b_y.view(-1, 1)
+            b_x, b_y = b_x.type(torch.FloatTensor), b_y.type(torch.LongTensor)
             b_x, b_y = Variable(b_x.cuda()), Variable(b_y.cuda())
-            for net, opt, l_his in zip(nets, optimizers, dev_losses_his):
-                output = net(b_x)  
-                temp = torch.ones(len(output), 1) - output # used for cross entropy loss_func
+            for net, opt, l_his, accuracy in zip(nets, optimizers, dev_losses_his, accuracies):
+                output = net(b_x)              # get output for every net
+                accuracy.append(get_accuracy(output, b_y))
+                temp = Variable(torch.ones(len(output), 1).cuda()) - output # used for cross entropy loss_func
                 output = torch.cat((output,temp), -1)
                 loss = loss_func(output, b_y)
                 l_his.append(loss.data.cpu().numpy())
             bxtemp.clear()
             bytemp.clear()
+        # compare current accuracy to highest accuracy
+        for i in range(len(highest_accuracies)):
+            accuracy = np.mean(accuracies[i])
+            if accuracy > highest_accuracies[i]:
+                highest_accuracies[i] = accuracy
+                save_model_for_cpp(nets, i)
     
     # test dataset
+    accuracies = [[], [], []]
     for i in range(len(test_dataset_index)):
         bxtemp.append(inputs[test_dataset_index[i]])
         bytemp.append(labels[test_dataset_index[i]])
     b_x, b_y = torch.tensor(bxtemp), torch.tensor(bytemp)
-    b_x, b_y = b_x.type(torch.FloatTensor), b_y.type(torch.FloatTensor)
-    b_y = b_y.view(-1, 1)
+    b_x, b_y = b_x.type(torch.FloatTensor), b_y.type(torch.LongTensor)
     b_x, b_y = Variable(b_x.cuda()), Variable(b_y.cuda())
-    for net, opt, l_his in zip(nets, optimizers, test_losses_his):
-        output = net(b_x)              
+    for net, opt, l_his, accuracy in zip(nets, optimizers, test_losses_his, accuracies):
+        output = net(b_x)              # get output for every net
+        accuracy.append(get_accuracy(output, b_y))
+        temp = Variable(torch.ones(len(output), 1).cuda()) - output # used for cross entropy loss_func    
+        output = torch.cat((output,temp), -1)    
         loss = loss_func(output, b_y)
         l_his.append(loss.data.cpu().numpy())
     bxtemp.clear()
     bytemp.clear()
-    test_result = []
+    test_loss_result = []
+    test_accurate_result = []
     for l_his in test_losses_his:
-        test_result.append(np.mean(l_his))
-    with open("test_result.txt", "w") as fo:
-        for result in test_result:
-            fo.write(result)
+        test_loss_result.append(np.mean(l_his))
+    for accuracy in accuracies:
+        test_accurate_result.append(np.mean(accuracy))
+    with open(OUT_FILE_DIR + "test_result.txt", "w") as fo:
+        fo.write("loss:\n")
+        for result in test_loss_result:
+            fo.write(str(result))
+            fo.write("\n")
+        fo.write("acc:\n")
+        for result in test_accurate_result:
+            fo.write(str(result))
             fo.write("\n")
 
     # record time
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
         time_elapsed / 60, time_elapsed % 60))
-    plot_labels = ['lr 1e-4', 'lr 1e-5', 'lr 1e-6']
+    plot_labels = ['lr 1e-3', 'lr 1e-4', 'lr 1e-5']
     # train plot
     tlh_plot_data = get_loss_plot_data(train_losses_his)
     dlh_plot_data = get_loss_plot_data(dev_losses_his)
@@ -312,7 +381,7 @@ if __name__ == '__main__':
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.ylim((0, 1.0))
-    plt.savefig(OUT_FILE_DIR + "test_train.png")
+    plt.savefig(OUT_FILE_DIR + "train_summary.png")
     plt.clf()
     # seperate optimizer plot
     for i, l_his in enumerate(tlh_plot_data):
@@ -330,7 +399,7 @@ if __name__ == '__main__':
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.ylim((0, 1.0))
-    plt.savefig(OUT_FILE_DIR + "test_dev.png")
+    plt.savefig(OUT_FILE_DIR + "dev_summary.png")
     plt.clf()
     # seperate optimizer plot
     for i, l_his in enumerate(dlh_plot_data):
@@ -346,43 +415,11 @@ if __name__ == '__main__':
             for item in train_los:
                 fo.write(str(item))
                 fo.write("\n")
-    with open(OUT_FILE_DIR + "train_model_loss", "w") as fo:
+    with open(OUT_FILE_DIR + "dev_model_loss", "w") as fo:
         for dev_loss in dev_losses_his:
             fo.write("optimizer\n")
             for item in dev_loss:
                 fo.write(str(item))
                 fo.write("\n")
 
-    model_dict = net.state_dict()
-    with open(OUT_FILE_DIR + "sc_nn_pytorch.model","w") as fo:
-        for i in model_dict:
-            if type(model_dict[i]) is torch.Tensor:
-                structure = "dict[%s]=" % i
-                fo.write(structure + "\n")
-                fo.write(str(model_dict[i].size()) + "\n")
-                fo.write(get_print_tensor(model_dict[i]))
-                fo.write("\n")
-
-    model_dict = net2.state_dict()
-    with open(OUT_FILE_DIR + "sc_nn_pytorch.model2","w") as fo:
-        for i in model_dict:
-            if type(model_dict[i]) is torch.Tensor:
-                structure = "dict[%s]=" % i
-                fo.write(structure + "\n")
-                fo.write(str(model_dict[i].size()) + "\n")
-                fo.write(get_print_tensor(model_dict[i]))
-                fo.write("\n")
-
-    model_dict = net3.state_dict()
-    with open(OUT_FILE_DIR + "sc_nn_pytorch.model2","w") as fo:
-        for i in model_dict:
-            if type(model_dict[i]) is torch.Tensor:
-                structure = "dict[%s]=" % i
-                fo.write(structure + "\n")
-                fo.write(str(model_dict[i].size()) + "\n")
-                fo.write(get_print_tensor(model_dict[i]))
-                fo.write("\n")
-
-    torch.save(net, OUT_FILE_DIR + 'sc_nn_pytorch.pt')
-    torch.save(net2, OUT_FILE_DIR + 'sc_nn_pytorch2.pt')
-    torch.save(net3, OUT_FILE_DIR + 'sc_nn_pytorch3.pt')
+    
