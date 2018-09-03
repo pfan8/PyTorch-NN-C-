@@ -5,11 +5,27 @@ import time
 from enum import Enum
 import io
 import sys
+import os
 
 if len(sys.argv) < 5:
         print("Usage: python/python3 feature_extract_tvp.py IMPORT_DATABASE LIMIT_START_INDEX LIMIT_NUM OUTPUT_FILE_NAME")
         sys.exit(-1)
 
+# config
+DB_NAME = sys.argv[1]
+HOST = "localhost"
+PORT = 3306
+USER = "root"
+PASSWD = "wangqiwei123"
+LIMIT_START_INDEX = sys.argv[2]
+LIMIT_NUM = sys.argv[3]
+OUT_DIR = "fo_tvp/"
+OUTPUT_FILE_NAME = sys.argv[4]
+LABEL_FILE_NAME = OUTPUT_FILE_NAME + "_label"
+ROW_FILE_NAME = OUTPUT_FILE_NAME + "_row"
+
+if not os.path.isdir(OUT_DIR):
+    os.mkdir(OUT_DIR)
 
 class Race(Enum):
     Zerg = 0
@@ -55,19 +71,6 @@ UNIT_SCORE = []
 MIN_FRAME_THREASHOLD = 14400
 MAX_FRAME_THREASHOLD = 60000
 MAX_DISTANCE = 2147483647
-
-# config
-DB_NAME = sys.argv[1]
-HOST = "localhost"
-PORT = 3306
-USER = "root"
-PASSWD = "wangqiwei123"
-LIMIT_START_INDEX = sys.argv[2]
-LIMIT_NUM = sys.argv[3]
-OUT_DIR = "fo_tvp/"
-FEATURE_FILE_NAME = sys.argv[4]
-LABEL_FILE_NAME = FEATURE_FILE_NAME + "_label"
-ROW_FILE_NAME = FEATURE_FILE_NAME + "_row"
 
 def get_features(race, player_replay_ID, replayID, bottom_frame, upper_frame, stats, oppo_stats):
 
@@ -432,7 +435,7 @@ for r_item in r_cursor:
         # print("features: " + str(features))
 
     # output feature to file
-    with open(OUT_DIR + FEATURE_FILE_NAME,"a") as fo:
+    with open(OUT_DIR + OUTPUT_FILE_NAME,"a") as fo:
         fo.write(str(features))
         fo.write("\n")
         features.clear()

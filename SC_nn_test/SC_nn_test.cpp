@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <regex>
 
-int _FEATURE_NUM = 35;
+int _FEATURE_NUM = 99;
 
 // ========================= Activation Function: ELUs ========================
 template<typename _Tp>
@@ -59,8 +59,34 @@ int activation_function_softplus(const _Tp* src, _Tp* dst, int length)
 	return 0;
 }
 
+// ========================= Activation Function: softmax ===================
+template<typename _Tp>
+int activation_function_softmax(const _Tp* src, _Tp* dst, int length)
+{
+	_Tp denom = 0.;
+	for (int i = 0; i < length; ++i) {
+		denom += (_Tp)(exp(src[i]));
+	}
+	//printf("demon:%f", demon);
+	for (int i = 0; i < length; ++i) {
+		dst[i] = (_Tp)(exp(src[i]) / denom);
+	}
+	return 0;
+}
 
-// =============================== 计算 sigmoid函数 ==========================
+// ========================= Activation Function: tanh ===================
+template<typename _Tp>
+int activation_function_tanh(const _Tp* src, _Tp* dst, int length)
+{
+	for (int i = 0; i < length; ++i) {
+		dst[i] = (_Tp)((exp(src[i]) - exp(-src[i])) / (exp(src[i]) + exp(-src[i])));
+	}
+
+	return 0;
+}
+
+
+// =============================== 璁＄畻 sigmoid鍑芥暟 ==========================
 template<typename _Tp>
 int activation_function_sigmoid(const _Tp* src, _Tp* dst, int length)
 {
@@ -80,6 +106,7 @@ int activation_function_sigmoid_fast(const _Tp* src, _Tp* dst, int length)
 
 	return 0;
 }
+
 
 void print_matrix(std::vector<double> mat)
 {
@@ -118,7 +145,12 @@ void test_activation_function()
 	fprintf(stderr, "type: Leaky ELUs result: \n");
 	activation_function_ELUs(src.data(), dst.data(), length);
 	print_matrix(dst);
-	
+	fprintf(stderr, "type: Leaky tanh result: \n");
+	activation_function_tanh(src.data(), dst.data(), length);
+	print_matrix(dst);
+	fprintf(stderr, "type: Leaky softmax result: \n");
+	activation_function_softmax(src.data(), dst.data(), length);
+	print_matrix(dst);
 }
 
 
@@ -132,8 +164,7 @@ int main(int argc, char *argv[])
 	input_s.push_back(1);
 	input_s.push_back(_FEATURE_NUM);
 	vector<double> input_m;
-	vector<pair<string, pair<vector<int>, vector<double>>>> params = load_data("D:\\AIIDE\\analyzer\\replay处理脚本\\sc_nn_pytorch.model");
-	bool ReLU_flag = false;
+	vector<pair<string, pair<vector<int>, vector<double>>>> params = load_data("C:\\Users\\buaal\\Desktop\\model\\net3.model");
 	for (int i = 0; i < _FEATURE_NUM; i++)
 	{
 		input_m.push_back(rand() / double(RAND_MAX));
@@ -141,6 +172,9 @@ int main(int argc, char *argv[])
 	}
 	pair<vector<int>, vector<double>> input = make_pair(input_s, input_m);
 	pair<vector<int>, vector<double>> result = input;
+	bool tanh_flag = false;
+	bool ReLU_flag = false;
+	bool softmax_flag = false;
 	for each (pair<string, pair<vector<int>, vector<double>>> param in params)
 	{
 		regex weight_e("(.*)\\.weight");
@@ -148,9 +182,20 @@ int main(int argc, char *argv[])
 		regex bias_e("(.*)\\.bias");
 		if (std::regex_search(param.first, weight_match, weight_e))
 		{
-			if (stoi(weight_match.format("$1")) == 1)
+
+			switch(stoi(weight_match.format("$1")))
 			{
+			case 0:
+				tanh_flag = true;
+				break;
+			case 2:
 				ReLU_flag = true;
+				break;
+			case 4:
+				softmax_flag = true;
+				break;
+			default:
+				break;
 			}
 			pair<vector<int>, vector<double>> temp;
 			temp = matrix_dot(result, param.second);
@@ -159,7 +204,7 @@ int main(int argc, char *argv[])
 				result = temp;
 			}
 		}
-		//加上bias
+		//鍔犱笂bias
 		else if (std::regex_match(param.first, bias_e))
 		{
 			pair<vector<int>, vector<double>> temp;
@@ -171,10 +216,20 @@ int main(int argc, char *argv[])
 				}
 			}
 		}
+		if (tanh_flag)
+		{
+			activation_function_tanh(result.second.data(), result.second.data(), result.second.size());
+			tanh_flag = false;
+		}
 		if (ReLU_flag)
 		{
 			activation_function_ReLU(result.second.data(), result.second.data(), result.second.size());
 			ReLU_flag = false;
+		}
+		if (softmax_flag)
+		{
+			activation_function_softmax(result.second.data(), result.second.data(), result.second.size());
+			softmax_flag = false;
 		}
 	}
 	//pair<vector<int>, vector<double>> result = matrix_dot(input, params[0].second);
@@ -189,5 +244,8 @@ int main(int argc, char *argv[])
 		cout << var << ",";
 	}
 	cout << "]" << endl;
-	return 0;
+	// get win prob
+	double win_prob = 1 / (1 + exp(result.second[0] - result.second[1]));
+	cout << "win prob:" << win_prob << endl;
+	//return 0;
 }
