@@ -20,9 +20,10 @@ import random
 
 
 BATCH_SIZE = 32
-EPOCH = 100
+EPOCH = 1000
 FILE_NUM = 4
-OUT_FILE_DIR = "model/"
+OUT_FILE_DIR = "model_go/"
+CLASS_NUM = 2
 
 def get_loss_plot_data(losses_his):
     temp = []
@@ -63,7 +64,7 @@ def get_accuracy(predict, label):
         raise ValueError
     else:
         for p,l in zip(predict, label):
-            temp = 1 if p > 0.5 else 0
+            temp = 1 if p[1] > p[0] else 0
             if temp == l:
                 hit_num += 1
         return hit_num / len(predict)
@@ -96,7 +97,7 @@ if __name__ == '__main__':
         os.mkdir(OUT_FILE_DIR)
 
     torch.cuda.device_count()
-    cuda0 = torch.cuda.set_device(0)
+    cuda0 = torch.cuda.set_device(1)
     torch.cuda.current_device()  # output: 0
     torch.cuda.get_device_name(0)
 
@@ -203,7 +204,6 @@ if __name__ == '__main__':
     # print("label length: %d" % len(labels))
     # index_array = np.random.permutation(np.arange(len(labels)))
     feature_num = len(inputs[0])
-    result_length = len(labels[0]) if type(labels[0]) is list else 1
 
     # put dateset into torch dataset
     # inputs = torch.Tensor(inputs)
@@ -234,33 +234,33 @@ if __name__ == '__main__':
     #xavier initialization
     linear1 = torch.nn.Linear(feature_num, 256)
     linear2 = torch.nn.Linear(256, 256)
-    linear3 = torch.nn.Linear(256, result_length)
+    linear3 = torch.nn.Linear(256, CLASS_NUM)
     # linear3 = torch.nn.Linear(256, 2)
     torch.nn.init.xavier_uniform_(linear1.weight)
     torch.nn.init.xavier_uniform_(linear2.weight)
     torch.nn.init.xavier_uniform_(linear3.weight)
 
-    net1 = torch.nn.Sequential(
-        linear1,
-        torch.nn.Tanh(),
-        linear2,
-        torch.nn.ReLU(),
-        linear3,
-        torch.nn.Sigmoid()
-    )
+    # net1 = torch.nn.Sequential(
+    #     linear1,
+    #     torch.nn.Tanh(),
+    #     linear2,
+    #     torch.nn.ReLU(),
+    #     linear3
+    #     # torch.nn.Sigmoid()
+    # )
 
-    net2, net3 = copy.deepcopy(net1), copy.deepcopy(net1)
+    # net2, net3 = copy.deepcopy(net1), copy.deepcopy(net1)
 
-    # net = torch.load(OUT_FILE_DIR + "net0.pt")
-    # net2 = torch.load(OUT_FILE_DIR + "net1.pt")
-    # net3 = torch.load(OUT_FILE_DIR + "net2.pt")
+    net1 = torch.load(OUT_FILE_DIR + "net1.pt")
+    net2 = torch.load(OUT_FILE_DIR + "net2.pt")
+    net3 = torch.load(OUT_FILE_DIR + "net3.pt")
 
     print(net1)  # net 的结构
 
     # Adam optimizer
     optimizer_1 = torch.optim.Adam(net1.parameters(), lr=1e-3)  # 传入 net 的所有参数, 学习率
-    optimizer_2 = torch.optim.Adam(net2.parameters(), lr=1e-4)  # 传入 net 的所有参数, 学习率
-    optimizer_3 = torch.optim.Adam(net3.parameters(), lr=1e-5)  # 传入 net 的所有参数, 学习率
+    optimizer_2 = torch.optim.Adam(net2.parameters(), lr=9e-3)  # 传入 net 的所有参数, 学习率
+    optimizer_3 = torch.optim.Adam(net3.parameters(), lr=1e-4)  # 传入 net 的所有参数, 学习率
     optimizers = [optimizer_1, optimizer_2, optimizer_3]
     loss_func = torch.nn.CrossEntropyLoss()      # 预测值和真实值的误差计算公式 (交叉熵)
     train_losses_his = [[], [], []]   # 记录 training 时不同学习率的 loss
@@ -295,8 +295,9 @@ if __name__ == '__main__':
             b_x, b_y = Variable(b_x.cuda()), Variable(b_y.cuda())
             for net, opt, l_his in zip(nets, optimizers, train_losses_his):
                 output = net(b_x)              # get output for every net
-                temp = Variable(torch.ones(len(output), 1).cuda()) - output # used for cross entropy loss_func
-                output = torch.cat((output,temp), -1)
+                # temp = Variable(torch.ones(len(output), 1).cuda()) - output # used for cross entropy loss_func
+                # output = torch.cat((output,temp), -1)
+                loss_func.zero_grad()
                 loss = loss_func(output, b_y)  # compute loss for every net
                 opt.zero_grad()                # clear gradients for next train
                 loss.backward()                # backpropagation, compute gradients
@@ -321,9 +322,10 @@ if __name__ == '__main__':
             for net, opt, l_his, accuracy in zip(nets, optimizers, dev_losses_his, accuracies):
                 output = net(b_x)              # get output for every net
                 accuracy.append(get_accuracy(output, b_y))
-                temp = Variable(torch.ones(len(output), 1).cuda()) - output # used for cross entropy loss_func
-                output = torch.cat((output,temp), -1)
+                # temp = Variable(torch.ones(len(output), 1).cuda()) - output # used for cross entropy loss_func
+                # output = torch.cat((output,temp), -1)
                 loss = loss_func(output, b_y)
+                loss_func.zero_grad()
                 l_his.append(loss.data.cpu().numpy())
             bxtemp.clear()
             bytemp.clear()
@@ -345,9 +347,10 @@ if __name__ == '__main__':
     for net, opt, l_his, accuracy in zip(nets, optimizers, test_losses_his, accuracies):
         output = net(b_x)              # get output for every net
         accuracy.append(get_accuracy(output, b_y))
-        temp = Variable(torch.ones(len(output), 1).cuda()) - output # used for cross entropy loss_func    
-        output = torch.cat((output,temp), -1)    
+        # temp = Variable(torch.ones(len(output), 1).cuda()) - output # used for cross entropy loss_func    
+        # output = torch.cat((output,temp), -1)
         loss = loss_func(output, b_y)
+        loss_func.zero_grad()
         l_his.append(loss.data.cpu().numpy())
     bxtemp.clear()
     bytemp.clear()
@@ -371,7 +374,7 @@ if __name__ == '__main__':
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
         time_elapsed / 60, time_elapsed % 60))
-    plot_labels = ['lr 1e-3', 'lr 1e-4', 'lr 1e-5']
+    plot_labels = ['lr 1e-3', 'lr 9e-3', 'lr 1e-4']
     # train plot
     tlh_plot_data = get_loss_plot_data(train_losses_his)
     dlh_plot_data = get_loss_plot_data(dev_losses_his)
@@ -380,6 +383,7 @@ if __name__ == '__main__':
     plt.legend(loc='best')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
+    plt.xlim((0))
     plt.ylim((0, 1.0))
     plt.savefig(OUT_FILE_DIR + "train_summary.png")
     plt.clf()
@@ -388,6 +392,7 @@ if __name__ == '__main__':
         plt.plot(l_his)
         plt.xlabel('Epochs')
         plt.ylabel('Loss')
+        plt.xlim((0))
         plt.ylim((0, 1.0))
         plt.savefig(OUT_FILE_DIR + plot_labels[i] + "_train.png")
         plt.clf()
@@ -398,6 +403,7 @@ if __name__ == '__main__':
     plt.legend(loc='best')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
+    plt.xlim((0))
     plt.ylim((0, 1.0))
     plt.savefig(OUT_FILE_DIR + "dev_summary.png")
     plt.clf()
@@ -406,6 +412,7 @@ if __name__ == '__main__':
         plt.plot(l_his)
         plt.xlabel('Epochs')
         plt.ylabel('Loss')
+        plt.xlim((0))
         plt.ylim((0, 1.0))
         plt.savefig(OUT_FILE_DIR + plot_labels[i] + "_dev.png")
         plt.clf()
