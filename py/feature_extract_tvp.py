@@ -7,7 +7,7 @@ import io
 import sys
 
 if len(sys.argv) < 5:
-        print("Usage: python/python3 feature_extract.py IMPORT_DATABASE LIMIT_START_INDEX LIMIT_NUM OUTPUT_FILE_NAME")
+        print("Usage: python/python3 feature_extract_tvp.py IMPORT_DATABASE LIMIT_START_INDEX LIMIT_NUM OUTPUT_FILE_NAME")
         sys.exit(-1)
 
 
@@ -64,6 +64,7 @@ USER = "root"
 PASSWD = "wangqiwei123"
 LIMIT_START_INDEX = sys.argv[2]
 LIMIT_NUM = sys.argv[3]
+OUT_DIR = "fo_tvp/"
 FEATURE_FILE_NAME = sys.argv[4]
 LABEL_FILE_NAME = FEATURE_FILE_NAME + "_label"
 ROW_FILE_NAME = FEATURE_FILE_NAME + "_row"
@@ -226,22 +227,38 @@ def get_features(race, player_replay_ID, replayID, bottom_frame, upper_frame, st
     stats['vm_action_num'] += cursor.fetchone()[0]
 
     ## building_slots
-    building_slots = [0] * len(TERRAN_BUILDING_ID_LIST)
+    building_slots = ([0] * len(TERRAN_BUILDING_ID_LIST)) if race == Race.Terran else ([0] * len(PROTOSS_BUILDING_ID_LIST))
     building_total_num = len(stats['current_buildings'])
     if building_total_num != 0:
-        for building in stats['current_buildings']:
-            for i in range(len(TERRAN_BUILDING_ID_LIST)):
-                if building[2] == TERRAN_BUILDING_ID_LIST[i]:
-                    building_slots[i] += 1
+        if race == Race.Terran:
+            for building in stats['current_buildings']:
+                for i in range(len(TERRAN_BUILDING_ID_LIST)):
+                    if building[2] == TERRAN_BUILDING_ID_LIST[i]:
+                        building_slots[i] += 1
+        elif race == Race.Protoss:
+            for building in stats['current_buildings']:
+                for i in range(len(PROTOSS_BUILDING_ID_LIST)):
+                    if building[2] == PROTOSS_BUILDING_ID_LIST[i]:
+                        building_slots[i] += 1
+        else:
+            raise ValueError
 
     ## unit_slots
-    unit_slots = [0] * len(TERRAN_UNIT_ID_LIST)
+    unit_slots = ([0] * len(TERRAN_UNIT_ID_LIST)) if race == Race.Terran else ([0] * len(PROTOSS_UNIT_ID_LIST))
     unit_total_num = len(stats['current_units'])
     if unit_total_num != 0:
-        for unit in stats['current_units']:
-            for i in range(len(TERRAN_UNIT_ID_LIST)):
-                if unit[2] == TERRAN_UNIT_ID_LIST[i]:
-                    unit_slots[i] += 1
+        if race == Race.Terran:
+            for unit in stats['current_units']:
+                for i in range(len(TERRAN_UNIT_ID_LIST)):
+                    if unit[2] == TERRAN_UNIT_ID_LIST[i]:
+                        unit_slots[i] += 1
+        elif race == Race.Protoss:
+            for unit in stats['current_units']:
+                for i in range(len(PROTOSS_UNIT_ID_LIST)):
+                    if unit[2] == PROTOSS_UNIT_ID_LIST[i]:
+                        unit_slots[i] += 1
+        else:
+            raise ValueError
 
     feature = [bottom_frame/MAX_FRAME_THREASHOLD, U_mineral, U_gas, U_supply, I_mineral, I_gas, I_supply, base_num, building_score, building_variety, unit_num, unit_score, unit_variety, stats['vm_action_num']
                             , unique_region] + building_slots + unit_slots
@@ -291,11 +308,11 @@ for r_item in r_cursor:
         if raceID == Race.none.value:
             # print("Invalid Race (PR_ID %d)" % pr_item[0])
             continue
-        if self_rp_id == -1:
+        if raceID == Race.Terran.value:
             self_rp_id = player_replay_ID
             if pr_item[2] == 1:
                 winner_label = 1
-        elif oppo_rp_id == -1:
+        elif raceID == Race.Protoss.value:
             oppo_rp_id = player_replay_ID
             if pr_item[2] == 1:
                 winner_label = 0
@@ -314,7 +331,7 @@ for r_item in r_cursor:
     # print("Processing playreplay %d,%d" % (self_rp_id,oppo_rp_id))
     fo_count += 1
     # output feature to file
-    with open(ROW_FILE_NAME,"a") as fo:
+    with open(OUT_DIR +ROW_FILE_NAME,"a") as fo:
         fo.write("row %d playreplay %d,%d" % (fo_count, self_rp_id,oppo_rp_id))
         fo.write("\n")
    
@@ -415,12 +432,12 @@ for r_item in r_cursor:
         # print("features: " + str(features))
 
     # output feature to file
-    with open(FEATURE_FILE_NAME,"a") as fo:
+    with open(OUT_DIR + FEATURE_FILE_NAME,"a") as fo:
         fo.write(str(features))
         fo.write("\n")
         features.clear()
     # output label to file
-    with open(LABEL_FILE_NAME,"a") as lo:
+    with open(OUT_DIR + LABEL_FILE_NAME,"a") as lo:
         lo.write(str(labels))
         lo.write("\n")
         features.clear()
