@@ -178,12 +178,32 @@ int main(int argc, char *argv[])
 	for each (pair<string, pair<vector<int>, vector<double>>> param in params)
 	{
 		regex weight_e("(.*)\\.weight");
-		smatch weight_match;
 		regex bias_e("(.*)\\.bias");
-		if (std::regex_search(param.first, weight_match, weight_e))
-		{
+		smatch bias_match;
 
-			switch(stoi(weight_match.format("$1")))
+		// calculate a linear
+		if (std::regex_match(param.first, weight_e))
+		{
+			pair<vector<int>, vector<double>> temp;
+			temp = matrix_dot(result, param.second);
+			if (temp.second.size() != 0)
+			{
+				result = temp;
+			}
+		}
+		// add bias
+		else if (std::regex_search(param.first, bias_match, bias_e))
+		{
+			pair<vector<int>, vector<double>> temp;
+			if (result.second.size() == param.second.second.size())
+			{
+				for (int i = 0; i < result.second.size(); i++)
+				{
+					result.second[i] += param.second.second[i];
+				}
+			}
+			// check activate function
+			switch(stoi(bias_match.format("$1")))
 			{
 			case 0:
 				tanh_flag = true;
@@ -197,25 +217,8 @@ int main(int argc, char *argv[])
 			default:
 				break;
 			}
-			pair<vector<int>, vector<double>> temp;
-			temp = matrix_dot(result, param.second);
-			if (temp.second.size() != 0)
-			{
-				result = temp;
-			}
 		}
-		//加上bias
-		else if (std::regex_match(param.first, bias_e))
-		{
-			pair<vector<int>, vector<double>> temp;
-			if (result.second.size() == param.second.second.size())
-			{
-				for (int i = 0; i < result.second.size(); i++)
-				{
-					result.second[i] += param.second.second[i];
-				}
-			}
-		}
+		// activate function
 		if (tanh_flag)
 		{
 			activation_function_tanh(result.second.data(), result.second.data(), result.second.size());
@@ -232,7 +235,6 @@ int main(int argc, char *argv[])
 			softmax_flag = false;
 		}
 	}
-	//pair<vector<int>, vector<double>> result = matrix_dot(input, params[0].second);
 	cout << "size:";
 	for each (int var in result.first)
 	{
