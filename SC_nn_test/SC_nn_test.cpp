@@ -247,5 +247,5 @@ int main(int argc, char *argv[])
 	// get win prob
 	double win_prob = 1 / (1 + exp(result.second[0] - result.second[1]));
 	cout << "win prob:" << win_prob << endl;
-	//return 0;
+	return 0;
 }
