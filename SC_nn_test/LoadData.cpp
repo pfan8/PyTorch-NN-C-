@@ -24,7 +24,7 @@ string& trim(string &s, char delim)
 	return s;
 }
 
-//¶ÁÈ¡·½Ê½: ÖğĞĞ¶ÁÈ¡, ½«ĞĞ¶ÁÈë×Ö·û´®, ĞĞÖ®¼äÓÃ»Ø³µ»»ĞĞÇø·Ö
+//è¯»å–æ–¹å¼: é€è¡Œè¯»å–, å°†è¡Œè¯»å…¥å­—ç¬¦ä¸², è¡Œä¹‹é—´ç”¨å›è½¦æ¢è¡ŒåŒºåˆ†
 //If you want to avoid reading into character arrays, 
 //you can use the C++ string getline() function to read lines into strings
 void ReadDataFromFileLBLIntoString()
@@ -54,7 +54,7 @@ vector<string> split(const string &s, char delim) {
 	return elems;
 }
 
-// ÎÒ½«·Ö¸ô·ûÄ¬ÈÏÉèÎª¿Õ¸ñ£¬µ±È»Ò²¿ÉÒÔÉèÎªÆäËû×Ö·ûÈç','
+// æˆ‘å°†åˆ†éš”ç¬¦é»˜è®¤è®¾ä¸ºç©ºæ ¼ï¼Œå½“ç„¶ä¹Ÿå¯ä»¥è®¾ä¸ºå…¶ä»–å­—ç¬¦å¦‚','
 string extract(string &values, int index, char delim = ' ') {
 	if (values.length() == 0)
 		return string("");
@@ -64,11 +64,11 @@ string extract(string &values, int index, char delim = ' ') {
 		return x.at(index);
 	}
 	catch (const out_of_range& e) {
-		return string("");  // ÒªÊÇ·ÃÎÊ³¬³ö·¶Î§µÄÔªËØ£¬ÎÒÃÇ¾Í·µ»Ø¿Õ´®
+		return string("");  // è¦æ˜¯è®¿é—®è¶…å‡ºèŒƒå›´çš„å…ƒç´ ï¼Œæˆ‘ä»¬å°±è¿”å›ç©ºä¸²
 	}
 }
 
-//stringµÄvector×ª»¯³ÉintµÄvector
+//stringçš„vectorè½¬åŒ–æˆintçš„vector
 vector<int> get_iv_from_sv(const vector<string> sv)
 {
 	vector<int> result;
@@ -93,18 +93,18 @@ pair<vector<int>, vector<double>> matrix_dot(pair<vector<int>, vector<double>> m
 	cout << "m2_col:" << m2_col << endl;
 	int dot_num = m1_row;
 	int jump_num = 1;
-	int temp_num = 1; //ÓÃÓÚÏà³ËÖĞÑ­»·
+	int temp_num = 1; //ç”¨äºç›¸ä¹˜ä¸­å¾ªç¯
 	vector<double> result_matrix_v;
 	vector<int> result_size_v;
 
-	// ¼ì²éÄÜ·ñÏà³Ë
+	// æ£€æŸ¥èƒ½å¦ç›¸ä¹˜
 	if (m1_row != m2_col)
 	{
 		cerr << "the two matrix doesn't match the dot principle !";
 		return null_result;
 	}
 
-	//¼ÇÂ¼Ïà³Ëºó¾ØÕóµÄĞÎ×´
+	//è®°å½•ç›¸ä¹˜åçŸ©é˜µçš„å½¢çŠ¶
 	for (int i = 0; i < m1.first.size() - 1; i++)
 	{
 		result_size_v.push_back(m1.first[i]);
@@ -117,7 +117,7 @@ pair<vector<int>, vector<double>> matrix_dot(pair<vector<int>, vector<double>> m
 		}
 	}
 
-	//m2Ã¿Ò»´ÎÏà³ËĞèÒªÌøÔ¾µÄÊıÁ¿
+	//m2æ¯ä¸€æ¬¡ç›¸ä¹˜éœ€è¦è·³è·ƒçš„æ•°é‡
 	if (m2.first.size() > 2)
 	{
 		jump_num = m2.first[m2.first.size() - 1];
@@ -142,7 +142,7 @@ pair<vector<int>, vector<double>> matrix_dot(pair<vector<int>, vector<double>> m
 	return make_pair(result_size_v, result_matrix_v);
 }
 
-//¶ÁÈ¡·½Ê½: ÖğĞĞ¶ÁÈ¡, ½«ĞĞ¶ÁÈë×Ö·ûÊı×é, ĞĞÖ®¼äÓÃ»Ø³µ»»ĞĞÇø·Ö
+//è¯»å–æ–¹å¼: é€è¡Œè¯»å–, å°†è¡Œè¯»å…¥å­—ç¬¦æ•°ç»„, è¡Œä¹‹é—´ç”¨å›è½¦æ¢è¡ŒåŒºåˆ†
 //If we were interested in preserving whitespace, 
 //we could read the file in Line-By-Line using the I/O getline() function.
 vector<pair<string, pair<vector<int>, vector<double>>>> load_data(char* filename)
@@ -247,5 +247,5 @@ vector<pair<string, pair<vector<int>, vector<double>>>> load_data(char* filename
 //	//}
 //
 	//vector<pair<string, pair<vector<int>, vector<double>>>> v;
-//	v = load_data("D:\\AIIDE\\analyzer\\replay´¦Àí½Å±¾\\sc_nn_pytorch.model");
+//	v = load_data("D:\\AIIDE\\analyzer\\replayå¤„ç†è„šæœ¬\\sc_nn_pytorch.model");
 //}

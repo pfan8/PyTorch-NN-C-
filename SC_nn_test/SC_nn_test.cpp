@@ -113,7 +113,7 @@ void print_matrix(std::vector<double> mat)
 	fprintf(stderr, "[");
 	for each (double var in mat)
 	{
-		fprintf(stderr, "%0.9f, ",var);
+		fprintf(stderr, "%0.9f, ", var);
 	}
 	fprintf(stderr, "]\n");
 }
@@ -164,17 +164,18 @@ int main(int argc, char *argv[])
 	input_s.push_back(1);
 	input_s.push_back(_FEATURE_NUM);
 	vector<double> input_m;
-	vector<pair<string, pair<vector<int>, vector<double>>>> params = load_data("C:\\Users\\buaal\\Desktop\\model\\net3.model");
-	for (int i = 0; i < _FEATURE_NUM; i++)
-	{
-		input_m.push_back(rand() / double(RAND_MAX));
-		//cout << i << ":" << input_m[i] << endl;
-	}
+	vector<pair<string, pair<vector<int>, vector<double>>>> params = load_data("C:/Users/buaal/Desktop/net1.model");
+	//for (int i = 0; i < _FEATURE_NUM; i++)
+	//{
+	//	input_m.push_back(rand() / double(RAND_MAX));
+	//	//cout << i << ":" << input_m[i] << endl;
+	//}
+	input_m = { 0.192017, 0.04175, 0.104571, 0.16, 0.0796667, 0.0355263, 0.27, 0.2, 0.1775, 0.247368, 0.36875, 0.1, 0.0863186, 0.22, 0.08, 0, 0, 0.36, 0.04, 0.04, 0, 0.08, 0.04, 0.04, 0, 0, 0, 0.08, 0, 0, 0, 0, 0, 0.0166667, 0.0333333, 0.05, 0.0666667, 0.0833333, 0.1, 0.116667, 0.0666667, 0.15, 0.166667, 0.183333, 0.2, 0.216667, 0.233333, 0.25, 0.45, 0.192017, 0.1, 0.0725, 0.398167, 0, 0, 0, 0.22, 0.04, 0, 0, 0.16, 0.04, 0.08, 0.04, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.04, 0, 0.0166667, 0.0333333, 0.05, 0.0666667, 0.0833333, 0.1, 0.116667, 0.0666667, 0.15, 0.166667, 0.183333, 0.2, 0.216667, 0.233333, 0.25, 0.45, 0.161203, 0, 0.379046, 0, 0.459752, 0, 0.433733 };
 	pair<vector<int>, vector<double>> input = make_pair(input_s, input_m);
 	pair<vector<int>, vector<double>> result = input;
 	bool tanh_flag = false;
 	bool ReLU_flag = false;
-	bool softmax_flag = false;
+	bool sigmoid_flag = false;
 	for each (pair<string, pair<vector<int>, vector<double>>> param in params)
 	{
 		regex weight_e("(.*)\\.weight");
@@ -189,6 +190,7 @@ int main(int argc, char *argv[])
 			if (temp.second.size() != 0)
 			{
 				result = temp;
+				//cout << result.second << endl;
 			}
 		}
 		// add bias
@@ -203,7 +205,7 @@ int main(int argc, char *argv[])
 				}
 			}
 			// check activate function
-			switch(stoi(bias_match.format("$1")))
+			switch (stoi(bias_match.format("$1")))
 			{
 			case 0:
 				tanh_flag = true;
@@ -212,7 +214,7 @@ int main(int argc, char *argv[])
 				ReLU_flag = true;
 				break;
 			case 4:
-				softmax_flag = true;
+				sigmoid_flag = true;
 				break;
 			default:
 				break;
@@ -229,10 +231,10 @@ int main(int argc, char *argv[])
 			activation_function_ReLU(result.second.data(), result.second.data(), result.second.size());
 			ReLU_flag = false;
 		}
-		if (softmax_flag)
+		if (sigmoid_flag)
 		{
-			activation_function_softmax(result.second.data(), result.second.data(), result.second.size());
-			softmax_flag = false;
+			activation_function_sigmoid(result.second.data(), result.second.data(), result.second.size());
+			sigmoid_flag = false;
 		}
 	}
 	cout << "size:";
@@ -247,7 +249,7 @@ int main(int argc, char *argv[])
 	}
 	cout << "]" << endl;
 	// get win prob
-	double win_prob = 1 / (1 + exp(result.second[0] - result.second[1]));
+	double win_prob = result.second[0];
 	cout << "win prob:" << win_prob << endl;
 	return 0;
 }

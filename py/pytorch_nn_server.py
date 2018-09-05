@@ -1,14 +1,14 @@
-from __future__ import print_function, division
-from torch.optim import lr_scheduler
+# from __future__ import print_function, division
+# from torch.optim import lr_scheduler
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
-import torch.nn.functional as F
+# import torch.nn.functional as F
 import torch.optim as optim
-import torch.utils.data as Data
+# import torch.utils.data as Data
 import numpy as np
-import torchvision
-from torchvision import datasets, models, transforms
+# import torchvision
+# from torchvision import datasets, models, transforms
 import matplotlib.pyplot as plt
 import time
 import os
@@ -16,14 +16,45 @@ import copy
 import io
 import json
 import ast
+import sys
 import random
 
 
 BATCH_SIZE = 32
-EPOCH = 1000
+EPOCH = 100
 FILE_NUM = 4
-OUT_FILE_DIR = "model_go/"
-CLASS_NUM = 2
+OUT_FILE_DIR = "model/"
+
+model_paths = []
+
+def get_batchs(dataset_split_index, inputs, labels):
+    x, y = [], []
+    b_x, b_y = [], []
+    for i, dsi in enumerate(dataset_split_index):
+        if (i % BATCH_SIZE) == 0:
+            b_x = list_to_cuda_var(b_x)
+            b_y = list_to_cuda_var(b_y)
+            x.append(b_x)
+            y.append(b_y)
+            b_x = []
+            b_y = []
+        rand_split_in_replay = np.random.randint(0, len(inputs[dsi]))
+        b_x.append(inputs[dsi][rand_split_in_replay])
+        b_y.append(labels[dsi])
+    if b_x != []:
+        b_x = list_to_cuda_var(b_x)
+        b_y = list_to_cuda_var(b_y)
+        x.append(b_x)
+        y.append(b_y)
+    del x[0], y[0]
+    return x, y
+
+def list_to_cuda_var(input_list):
+    input_list = torch.tensor(input_list)
+    input_list = input_list.type(torch.FloatTensor)
+    input_list = Variable(input_list.cuda())
+    return input_list
+    
 
 def get_loss_plot_data(losses_his):
     temp = []
@@ -57,17 +88,17 @@ def get_print_tensor(tensor):
 def normalize_min_max(data, index, max_threashold, min_threashold = 0):
     data[index] = (data[index] - min_threashold) / (max_threashold - min_threashold)
 
-def get_accuracy(predict, label):
+def get_accuracy(predicts, labels):
     hit_num = 0
-    if(len(predict) != len(label)):
-        print("size of predict and label didn't match")
+    if(len(predicts) != len(labels)):
+        print("size of predicts and labels didn't match")
         raise ValueError
     else:
-        for p,l in zip(predict, label):
-            temp = 1 if p[1] > p[0] else 0
-            if temp == l:
+        for predict,label in zip(predicts, labels):
+            temp = 1 if predict > 0.5 else 0
+            if temp == label:
                 hit_num += 1
-        return hit_num / len(predict)
+        return hit_num / len(predicts)
 
 def save_model_for_cpp(nets, i):
     model = {
@@ -89,17 +120,15 @@ def save_model(model):
                 fo.write(str(model_dict[i].size()) + "\n")
                 fo.write(get_print_tensor(model_dict[i]))
                 fo.write("\n")
-
-    torch.save(net, OUT_FILE_DIR + name +'.pt')
+    model_path = OUT_FILE_DIR + name +'.pt'
+    model_paths.append(model_path)
+    torch.save(net, model_path)
  
 if __name__ == '__main__':
     if not os.path.exists(OUT_FILE_DIR):
         os.mkdir(OUT_FILE_DIR)
 
-    torch.cuda.device_count()
-    cuda0 = torch.cuda.set_device(1)
-    torch.cuda.current_device()  # output: 0
-    torch.cuda.get_device_name(0)
+    cuda0 = torch.cuda.set_device(0)
 
     plt.ion() 
 
@@ -187,23 +216,19 @@ if __name__ == '__main__':
                     del input_temp[i][51:57] # oppo resourse related features
                     del input_temp[i][14] # self unique_region
                 
-                inputs += input_temp
+                inputs.append(input_temp)
         label_file_name = feature_file_name + "_label"
         with open(label_file_name) as fi:
-            while True:
-                line = fi.readline()
-                if not line:
-                    break
-                label = ast.literal_eval(line)
-        labels += label
+            for line in fi.readlines():
+                label = ast.literal_eval(line)[-1]
+                labels.append(label)
         current_file_num += 1
 
-    # print(inputs[0])
-    # print(labels[0])
-    # print("feature length: %d" % len(inputs))
-    # print("label length: %d" % len(labels))
-    # index_array = np.random.permutation(np.arange(len(labels)))
-    feature_num = len(inputs[0])
+    if len(labels) != len(inputs):
+        print("input length does not match label length!!!")
+        sys.exit(-1)
+    feature_num = len(inputs[0][0])
+    assert feature_num == 99
 
     # put dateset into torch dataset
     # inputs = torch.Tensor(inputs)
@@ -223,49 +248,52 @@ if __name__ == '__main__':
     print("winner_count: %d" % winner_count)
     print("lose_count: %d" % lose_count)
     # use permutation to split train|dev|test dataset after shuffle whole data
-    np.random.seed(1)
-    dataset_index = np.random.permutation(np.arange(len(labels)))
-    train_split_index = int(len(inputs) * 0.8)
-    dev_split_index = int(len(inputs) * 0.9)
-    train_dataset_index = dataset_index[ : train_split_index]
-    dev_dataset_index = dataset_index[train_split_index : dev_split_index]
-    test_dataset_index = dataset_index[dev_split_index : ]
+    replay_num = len(inputs)
+    replay_index = np.random.permutation(np.arange(replay_num))
+    print("replay_num: %d" % replay_num)
+    print("replay_index: %s" % str(replay_index))
+    train_split_index = int(replay_num * 0.8)
+    dev_split_index = int(replay_num * 0.9)
+    train_dataset_index = replay_index[ : train_split_index]
+    dev_dataset_index = replay_index[train_split_index : dev_split_index]
+    test_dataset_index = replay_index[dev_split_index : ]
 
     #xavier initialization
     linear1 = torch.nn.Linear(feature_num, 256)
     linear2 = torch.nn.Linear(256, 256)
-    linear3 = torch.nn.Linear(256, CLASS_NUM)
+    linear3 = torch.nn.Linear(256, 1)
     # linear3 = torch.nn.Linear(256, 2)
     torch.nn.init.xavier_uniform_(linear1.weight)
     torch.nn.init.xavier_uniform_(linear2.weight)
     torch.nn.init.xavier_uniform_(linear3.weight)
 
-    # net1 = torch.nn.Sequential(
-    #     linear1,
-    #     torch.nn.Tanh(),
-    #     linear2,
-    #     torch.nn.ReLU(),
-    #     linear3
-    #     # torch.nn.Sigmoid()
-    # )
+    net1 = torch.nn.Sequential(
+        linear1,
+        torch.nn.Tanh(),
+        linear2,
+        torch.nn.ReLU(),
+        linear3,
+        torch.nn.Sigmoid()
+    )
 
-    # net2, net3 = copy.deepcopy(net1), copy.deepcopy(net1)
+    net2, net3 = copy.deepcopy(net1), copy.deepcopy(net1)
 
-    net1 = torch.load(OUT_FILE_DIR + "net1.pt")
-    net2 = torch.load(OUT_FILE_DIR + "net2.pt")
-    net3 = torch.load(OUT_FILE_DIR + "net3.pt")
+    # net1 = torch.load(OUT_FILE_DIR + "net1.pt")
+    # net2 = torch.load(OUT_FILE_DIR + "net2.pt")
+    # net3 = torch.load(OUT_FILE_DIR + "net3.pt")
 
     print(net1)  # net 的结构
 
     # Adam optimizer
-    optimizer_1 = torch.optim.Adam(net1.parameters(), lr=1e-3)  # 传入 net 的所有参数, 学习率
-    optimizer_2 = torch.optim.Adam(net2.parameters(), lr=9e-3)  # 传入 net 的所有参数, 学习率
+    optimizer_1 = torch.optim.Adam(net1.parameters(), lr=1e-2)  # 传入 net 的所有参数, 学习率
+    optimizer_2 = torch.optim.Adam(net2.parameters(), lr=1e-3)  # 传入 net 的所有参数, 学习率
     optimizer_3 = torch.optim.Adam(net3.parameters(), lr=1e-4)  # 传入 net 的所有参数, 学习率
     optimizers = [optimizer_1, optimizer_2, optimizer_3]
-    loss_func = torch.nn.CrossEntropyLoss()      # 预测值和真实值的误差计算公式 (交叉熵)
-    train_losses_his = [[], [], []]   # 记录 training 时不同学习率的 loss
-    dev_losses_his = [[], [], []]   # 记录 training 时不同学习率的 loss
-    test_losses_his = [[], [], []]   # 记录 training 时不同学习率的 loss
+    loss_func = torch.nn.BCELoss()      # 二分类交叉熵loss
+    train_losses_his = [[], [], []]   # 记录 training 时train不同学习率的 loss
+    dev_losses_his = [[], [], []]   # 记录 training 时dev不同学习率的 loss
+    test_losses_his = [[], [], []]   # 记录 training 时test不同学习率的 loss
+    test_acc_his = [[], [], []] # 记录 training 时test不同学习率的 acc
     highest_accuracies = [0, 0, 0]   # 记录最高的准确率
     nets = [net1, net2, net3]
 
@@ -282,84 +310,66 @@ if __name__ == '__main__':
     for epoch in range(EPOCH):
         print('Epoch: ', epoch)
         # train dataset
-        bxtemp = [inputs[train_dataset_index[0]]]
-        bytemp = [labels[train_dataset_index[0]]]
-        ac_temp = 0
-        for i in range(1, len(train_dataset_index)):
-            if i % BATCH_SIZE != 0:
-                bxtemp.append(inputs[train_dataset_index[i]])
-                bytemp.append(labels[train_dataset_index[i]])
-                continue
-            b_x, b_y = torch.tensor(bxtemp), torch.tensor(bytemp)
-            b_x, b_y = b_x.type(torch.FloatTensor), b_y.type(torch.LongTensor)
-            b_x, b_y = Variable(b_x.cuda()), Variable(b_y.cuda())
+        x, y = get_batchs(train_dataset_index, inputs, labels)
+        for b_x, b_y in zip(x, y):
             for net, opt, l_his in zip(nets, optimizers, train_losses_his):
                 output = net(b_x)              # get output for every net
-                # temp = Variable(torch.ones(len(output), 1).cuda()) - output # used for cross entropy loss_func
-                # output = torch.cat((output,temp), -1)
+                output = output.squeeze()
                 loss_func.zero_grad()
                 loss = loss_func(output, b_y)  # compute loss for every net
                 opt.zero_grad()                # clear gradients for next train
                 loss.backward()                # backpropagation, compute gradients
                 opt.step()                     # apply gradients
                 l_his.append(loss.data.cpu().numpy())     # loss recoder
-            bxtemp.clear()
-            bytemp.clear()
-
 
         # dev dataset
-        bxtemp = [inputs[dev_dataset_index[0]]]
-        bytemp = [labels[dev_dataset_index[0]]]
+        x, y = get_batchs(dev_dataset_index, inputs, labels)
         accuracies = [[], [], []]
-        for i in range(1, len(dev_dataset_index)):
-            if i % BATCH_SIZE != 0:
-                bxtemp.append(inputs[dev_dataset_index[i]])
-                bytemp.append(labels[dev_dataset_index[i]])
-                continue
-            b_x, b_y = torch.tensor(bxtemp), torch.tensor(bytemp)
-            b_x, b_y = b_x.type(torch.FloatTensor), b_y.type(torch.LongTensor)
-            b_x, b_y = Variable(b_x.cuda()), Variable(b_y.cuda())
+        for b_x, b_y in zip(x, y):
             for net, opt, l_his, accuracy in zip(nets, optimizers, dev_losses_his, accuracies):
                 output = net(b_x)              # get output for every net
+                output = output.squeeze()
                 accuracy.append(get_accuracy(output, b_y))
-                # temp = Variable(torch.ones(len(output), 1).cuda()) - output # used for cross entropy loss_func
-                # output = torch.cat((output,temp), -1)
-                loss = loss_func(output, b_y)
                 loss_func.zero_grad()
-                l_his.append(loss.data.cpu().numpy())
-            bxtemp.clear()
-            bytemp.clear()
+                loss = loss_func(output, b_y)  # compute loss for every net
+                opt.zero_grad()                # clear gradients for next train
+                l_his.append(loss.data.cpu().numpy())     # loss recoder
         # compare current accuracy to highest accuracy
         for i in range(len(highest_accuracies)):
             accuracy = np.mean(accuracies[i])
             if accuracy > highest_accuracies[i]:
                 highest_accuracies[i] = accuracy
                 save_model_for_cpp(nets, i)
+
+        # test dataset
+        x, y = get_batchs(test_dataset_index, inputs, labels)
+        for b_x, b_y in zip(x, y):
+            for net, opt, l_his, acc_his in zip(nets, optimizers, test_losses_his, test_acc_his):
+                output = net(b_x)              # get output for every net
+                output = output.squeeze()
+                acc_his.append(get_accuracy(output, b_y))
+                loss_func.zero_grad()
+                loss = loss_func(output, b_y)  # compute loss for every net
+                opt.zero_grad()                # clear gradients for next train
+                l_his.append(loss.data.cpu().numpy())     # loss recoder
     
     # test dataset
     accuracies = [[], [], []]
-    for i in range(len(test_dataset_index)):
-        bxtemp.append(inputs[test_dataset_index[i]])
-        bytemp.append(labels[test_dataset_index[i]])
-    b_x, b_y = torch.tensor(bxtemp), torch.tensor(bytemp)
-    b_x, b_y = b_x.type(torch.FloatTensor), b_y.type(torch.LongTensor)
-    b_x, b_y = Variable(b_x.cuda()), Variable(b_y.cuda())
-    for net, opt, l_his, accuracy in zip(nets, optimizers, test_losses_his, accuracies):
+    x, y = get_batchs(test_dataset_index, inputs, labels)
+    for net, model_path, opt, l_his, accuracy in zip(nets, model_paths, optimizers, test_losses_his, accuracies):
+        net = torch.load(model_path)
         output = net(b_x)              # get output for every net
+        output = output.squeeze()
         accuracy.append(get_accuracy(output, b_y))
-        # temp = Variable(torch.ones(len(output), 1).cuda()) - output # used for cross entropy loss_func    
-        # output = torch.cat((output,temp), -1)
         loss = loss_func(output, b_y)
         loss_func.zero_grad()
         l_his.append(loss.data.cpu().numpy())
-    bxtemp.clear()
-    bytemp.clear()
     test_loss_result = []
     test_accurate_result = []
     for l_his in test_losses_his:
-        test_loss_result.append(np.mean(l_his))
+        test_loss_result.append(l_his[-1])
     for accuracy in accuracies:
-        test_accurate_result.append(np.mean(accuracy))
+        test_accurate_result.append(accuracy[-1])
     with open(OUT_FILE_DIR + "test_result.txt", "w") as fo:
         fo.write("loss:\n")
         for result in test_loss_result:
@@ -374,10 +384,14 @@ if __name__ == '__main__':
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
         time_elapsed / 60, time_elapsed % 60))
-    plot_labels = ['lr 1e-3', 'lr 9e-3', 'lr 1e-4']
-    # train plot
+    plot_labels = ['lr 1e-2', 'lr 1e-3', 'lr 1e-4']
+    
     tlh_plot_data = get_loss_plot_data(train_losses_his)
     dlh_plot_data = get_loss_plot_data(dev_losses_his)
+    test_lh_plot_data = get_loss_plot_data(test_losses_his)
+    test_ah_plot_data = get_loss_plot_data(test_acc_his)
+
+    # train plot
     for i, l_his in enumerate(tlh_plot_data):
         plt.plot(l_his, label=plot_labels[i])
     plt.legend(loc='best')
@@ -428,5 +442,27 @@ if __name__ == '__main__':
             for item in dev_loss:
                 fo.write(str(item))
                 fo.write("\n")
+    # test plot
+    plt.clf()
+    for i, l_his in enumerate(test_lh_plot_data):
+        plt.plot(l_his, label=plot_labels[i])
+    plt.legend(loc='best')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.xlim((0))
+    plt.ylim((0, 1.0))
+    plt.savefig(OUT_FILE_DIR + "test_loss_summary.png")
+    plt.clf()
+
+    plt.clf()
+    for i, l_his in enumerate(test_ah_plot_data):
+        plt.plot(l_his, label=plot_labels[i])
+    plt.legend(loc='best')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accurate')
+    plt.xlim((0))
+    plt.ylim((0, 1.0))
+    plt.savefig(OUT_FILE_DIR + "test_acc_summary.png")
+    plt.clf()
 
     

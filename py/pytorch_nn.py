@@ -97,10 +97,10 @@ if __name__ == '__main__':
     if not os.path.exists(OUT_FILE_DIR):
         os.mkdir(OUT_FILE_DIR)
 
-    # torch.cuda.device_count()
-    # cuda0 = torch.cuda.set_device(0)
-    # torch.cuda.current_device()  # output: 0
-    # torch.cuda.get_device_name(0)
+    torch.cuda.device_count()
+    cuda0 = torch.cuda.set_device(0)
+    torch.cuda.current_device()  # output: 0
+    torch.cuda.get_device_name(0)
 
     plt.ion() 
 
@@ -298,7 +298,7 @@ if __name__ == '__main__':
             # count += 1
             b_x, b_y = torch.tensor(bxtemp), torch.tensor(bytemp)
             b_x, b_y = b_x.type(torch.FloatTensor), b_y.type(torch.LongTensor)
-            # b_x, b_y = Variable(b_x.cuda()), Variable(b_y.cuda())
+            b_x, b_y = Variable(b_x.cuda()), Variable(b_y.cuda())
             for net, opt, l_his in zip(nets, optimizers, train_losses_his):
                 output = net(b_x)              # get output for every net
                 temp = Variable(torch.ones(len(output), 1)) - output # used for cross entropy loss_func
